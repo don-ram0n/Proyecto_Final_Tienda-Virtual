@@ -1,0 +1,275 @@
+const contenido = document.getElementById("contenido");
+const contadorCarrito = document.getElementById("cart-count");
+
+// ---------- Estado ----------
+let carrito = [];
+try { carrito = JSON.parse(localStorage.getItem("carrito")) || []; } catch (e) { carrito = []; }
+carrito = carrito.filter((i) => buscar(i.id));
+
+const filtros = { categoria: "Todas", min: "", max: "", stock: "Todos", orden: "name" };
+
+// ---------- Funciones del carrito ----------
+function buscar(id) {
+  return productos.find((p) => p.id === Number(id));
+}
+
+function guardar() {
+  try { localStorage.setItem("carrito", JSON.stringify(carrito)); } catch (e) {}
+  actualizarContador();
+}
+
+function actualizarContador() {
+  contadorCarrito.textContent = carrito.reduce((t, i) => t + i.cantidad, 0);
+}
+
+function agregarAlCarrito(id) {
+  const p = buscar(id);
+  if (!p || p.stock <= 0) return;
+  const item = carrito.find((i) => i.id === p.id);
+  if (item) item.cantidad = Math.min(item.cantidad + 1, p.stock);
+  else carrito.push({ id: p.id, cantidad: 1 });
+  guardar();
+}
+
+function eliminarDelCarrito(id) {
+  carrito = carrito.filter((i) => i.id !== id);
+  guardar();
+  mostrarCarrito();
+}
+
+function cambiarCantidad(id, valor) {
+  const p = buscar(id);
+  const item = carrito.find((i) => i.id === id);
+  if (!p || !item) return;
+  item.cantidad = Math.max(1, Math.min(Number(valor) || 1, p.stock));
+  guardar();
+  mostrarCarrito();
+}
+
+function vaciarCarrito() {
+  carrito = [];
+  guardar();
+  mostrarCarrito();
+}
+
+// ---------- Tarjeta de producto ----------
+function tarjeta(p) {
+  const hay = p.stock > 0;
+  return `
+    <article class="product-card">
+      <a href="#/producto/${p.id}" class="product-image-link">
+        <img src="${p.imagen}" alt="${p.nombre}" class="product-image"
+          onerror="this.src='https://placehold.co/600x400?text=Producto'">
+      </a>
+      <div class="product-info">
+        <span class="category-label">${p.categoria}</span>
+        <a href="#/producto/${p.id}" class="product-name">${p.nombre}</a>
+        <strong class="price">$${p.precio.toFixed(2)}</strong>
+        <span class="stock ${hay ? "available" : "unavailable"}">${hay ? "Stock: " + p.stock : "Sin stock"}</span>
+        <button class="primary-button" ${hay ? "" : "disabled"} onclick="agregarAlCarrito(${p.id})">
+          ${hay ? "Agregar al carrito" : "No disponible"}
+        </button>
+      </div>
+    </article>`;
+}
+
+// ---------- Página: listado ----------
+function mostrarListado() {
+  const categorias = [...new Set(productos.map((p) => p.categoria))];
+
+  contenido.innerHTML = `
+    <section class="page-heading">
+      <div>
+        <p class="eyebrow">ENCONTRÁ LO QUE BUSCÁS</p>
+        <h1>Nuestros productos</h1>
+        <p class="muted">Explorá el catálogo y agregá tus productos favoritos al carrito.</p>
+      </div>
+    </section>
+
+    <section class="filters">
+      <div class="filter-group">
+        <label for="orden">Ordenar por</label>
+        <select id="orden">
+          <option value="name">Nombre</option>
+          <option value="price-asc">Precio: menor a mayor</option>
+          <option value="price-desc">Precio: mayor a menor</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="categoria">Filtrar por categoría</label>
+        <select id="categoria">
+          <option value="Todas">Todas</option>
+          ${categorias.map((c) => `<option value="${c}">${c}</option>`).join("")}
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Filtrar por precio</label>
+        <div class="price-inputs">
+          <input type="number" id="min" min="0" placeholder="Precio mínimo">
+          <input type="number" id="max" min="0" placeholder="Precio máximo">
+        </div>
+      </div>
+      <div class="filter-group">
+        <label for="stock">Filtrar por stock</label>
+        <select id="stock">
+          <option value="Todos">Todos</option>
+          <option value="Disponible">Disponibles</option>
+          <option value="Agotado">Agotados</option>
+        </select>
+      </div>
+    </section>
+
+    <div class="results-row">
+      <span id="cantidad"></span>
+      <button class="text-button" id="limpiar">Limpiar filtros</button>
+    </div>
+    <div id="resultados"></div>`;
+
+  const campos = ["orden", "categoria", "min", "max", "stock"];
+
+  campos.forEach((id) => {
+    const el = document.getElementById(id);
+    el.value = filtros[id];
+    el.addEventListener("input", () => {
+      filtros[id] = el.value;
+      actualizarListado();
+    });
+  });
+
+  document.getElementById("limpiar").addEventListener("click", () => {
+    Object.assign(filtros, { categoria: "Todas", min: "", max: "", stock: "Todos", orden: "name" });
+    campos.forEach((id) => (document.getElementById(id).value = filtros[id]));
+    actualizarListado();
+  });
+
+  actualizarListado();
+}
+
+function actualizarListado() {
+  let lista = [...productos];
+
+  if (filtros.categoria !== "Todas") lista = lista.filter((p) => p.categoria === filtros.categoria);
+  if (filtros.min !== "") lista = lista.filter((p) => p.precio >= Number(filtros.min));
+  if (filtros.max !== "") lista = lista.filter((p) => p.precio <= Number(filtros.max));
+  if (filtros.stock === "Disponible") lista = lista.filter((p) => p.stock > 0);
+  if (filtros.stock === "Agotado") lista = lista.filter((p) => p.stock === 0);
+
+  if (filtros.orden === "name") lista.sort((a, b) => a.nombre.localeCompare(b.nombre));
+  if (filtros.orden === "price-asc") lista.sort((a, b) => a.precio - b.precio);
+  if (filtros.orden === "price-desc") lista.sort((a, b) => b.precio - a.precio);
+
+  document.getElementById("cantidad").textContent = lista.length + " productos encontrados";
+  document.getElementById("resultados").innerHTML = lista.length
+    ? `<section class="product-grid">${lista.map(tarjeta).join("")}</section>`
+    : `<p class="empty-message">No se encontraron productos con esos filtros.</p>`;
+}
+
+// ---------- Página: detalle ----------
+function mostrarProducto(id) {
+  const p = buscar(id);
+  if (!p) {
+    contenido.innerHTML = `
+      <section class="empty-cart">
+        <h1>Producto no encontrado</h1>
+        <a href="#/" class="continue-link">Volver al catálogo</a>
+      </section>`;
+    return;
+  }
+  const hay = p.stock > 0;
+  contenido.innerHTML = `
+    <section class="detail-page">
+      <a href="#/" class="continue-link">← Volver a productos</a>
+      <div class="detail-card">
+        <img src="${p.imagen}" alt="${p.nombre}"
+          onerror="this.src='https://placehold.co/700x550?text=Producto'">
+        <div class="detail-info">
+          <span class="category-label">${p.categoria}</span>
+          <h1>${p.nombre}</h1>
+          <p>${p.descripcion}</p>
+          <strong class="detail-price">$${p.precio.toFixed(2)}</strong>
+          <p class="stock ${hay ? "available" : "unavailable"}">
+            ${hay ? p.stock + " unidades disponibles" : "Producto sin stock"}
+          </p>
+          <button class="primary-button" ${hay ? "" : "disabled"} onclick="agregarAlCarrito(${p.id})">
+            Agregar al carrito
+          </button>
+        </div>
+      </div>
+    </section>`;
+}
+
+// ---------- Página: carrito ----------
+function mostrarCarrito() {
+  if (carrito.length === 0) {
+    contenido.innerHTML = `
+      <section class="empty-cart">
+        <h1>Tu carrito está vacío</h1>
+        <p class="muted">Todavía no agregaste productos.</p>
+        <a href="#/" class="primary-button button-link">Ver productos</a>
+      </section>`;
+    return;
+  }
+
+  const total = carrito.reduce((t, i) => t + buscar(i.id).precio * i.cantidad, 0);
+
+  contenido.innerHTML = `
+    <section>
+      <div class="page-heading">
+        <div><p class="eyebrow">TU COMPRA</p><h1>Carrito de compras</h1></div>
+      </div>
+      <div class="cart-layout">
+        <div class="cart-items">
+          ${carrito.map((i) => {
+            const p = buscar(i.id);
+            return `
+            <article class="cart-item">
+              <img src="${p.imagen}" alt="${p.nombre}"
+                onerror="this.src='https://placehold.co/200x150?text=Producto'">
+              <div class="cart-item-info">
+                <h3>${p.nombre}</h3>
+                <p>$${p.precio.toFixed(2)} por unidad</p>
+                <label class="quantity-label">
+                  Cantidad
+                  <input type="number" min="1" max="${p.stock}" value="${i.cantidad}"
+                    onchange="cambiarCantidad(${p.id}, this.value)">
+                </label>
+              </div>
+              <div class="cart-item-end">
+                <strong>$${(p.precio * i.cantidad).toFixed(2)}</strong>
+                <button class="remove-button" onclick="eliminarDelCarrito(${p.id})">Eliminar</button>
+              </div>
+            </article>`;
+          }).join("")}
+        </div>
+        <aside class="summary">
+          <h2>Resumen</h2>
+          <div class="summary-line"><span>Subtotal</span><strong>$${total.toFixed(2)}</strong></div>
+          <div class="summary-line"><span>Envío</span><span>A calcular</span></div>
+          <div class="summary-total"><span>Total</span><strong>$${total.toFixed(2)}</strong></div>
+          <button class="primary-button full-button" onclick="alert('¡Compra de prueba realizada!')">Finalizar compra</button>
+          <button class="text-button full-button" onclick="vaciarCarrito()">Vaciar carrito</button>
+          <a href="#/" class="continue-link">← Seguir comprando</a>
+        </aside>
+      </div>
+    </section>`;
+}
+
+// ---------- Navegación entre páginas ----------
+function rutear() {
+  const ruta = location.hash.replace("#", "") || "/";
+  const partes = ruta.split("/");
+
+  document.getElementById("nav-productos").classList.toggle("active", ruta === "/");
+  document.getElementById("nav-carrito").classList.toggle("active", ruta === "/carrito");
+
+  if (ruta === "/") mostrarListado();
+  else if (ruta === "/carrito") mostrarCarrito();
+  else if (partes[1] === "producto") mostrarProducto(partes[2]);
+  else contenido.innerHTML = `<h2 class="not-found">Página no encontrada</h2>`;
+
+  window.scrollTo(0, 0);
+}
+
+window.addEventListener("hashchange", rutear);
+actualizarContador();
+rutear();
